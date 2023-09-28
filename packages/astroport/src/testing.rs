@@ -1,3 +1,4 @@
+use crate::DecimalCheckedOps;
 use crate::asset::{format_lp_token_name, Asset, AssetInfo, PairInfo};
 use crate::mock_querier::mock_dependencies;
 use crate::querier::{
@@ -5,7 +6,6 @@ use crate::querier::{
 };
 
 use crate::factory::PairType;
-use crate::DecimalCheckedOps;
 use cosmwasm_std::testing::MOCK_CONTRACT_ADDR;
 use cosmwasm_std::{to_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal, Uint128, WasmMsg};
 use cw20::Cw20ExecuteMsg;
@@ -343,12 +343,12 @@ fn test_decimal_checked_ops() {
         let dec = Decimal::from_ratio(i, 1u128);
         assert_eq!(
             dec * Uint128::new(i),
-            dec.checked_mul(Uint128::new(i)).unwrap()
+            dec.checked_mul_uint128(Uint128::from(i)).unwrap()
         );
     }
     assert!(
         Decimal::from_ratio(Uint128::MAX, Uint128::from(10u128.pow(18u32)))
-            .checked_mul(Uint128::from(10u128.pow(18u32) + 1))
+            .checked_mul(Decimal::raw(10u128.pow(18u32) + 1))
             .is_err()
     );
 }
