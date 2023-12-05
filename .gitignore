@@ -6,6 +6,7 @@
 
 # Build results
 target/
+build/
 
 # IDEs
 .vscode/
@@ -16,6 +17,8 @@ target/
 .cargo-ok
 /scripts/.env
 /scripts/node_modules/
+/new_scripts/node_modules/
+/new_scripts/.env
 #/scripts/package-lock.json
 /artifacts/*.wasm
 /artifacts/old
@@ -23,3 +26,4 @@ target/
 /artifacts/checksums.txt
 /artifacts/localterra.json
 /artifacts/localterra_data.json
+mytestnet/
