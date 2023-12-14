@@ -1,11 +1,10 @@
 use crate::error::ContractError;
 use crate::state::{Config, CONFIG};
 
-use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
+    attr, entry_point, from_json, to_json_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg,
+    WasmMsg, Decimal256, Uint256
 };
 
 use crate::response::MsgInstantiateContractResponse;
@@ -22,6 +21,8 @@ use astroport::{token::InstantiateMsg as TokenInstantiateMsg, U256};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
+use std::convert::TryFrom;
+use std::ops::Mul;
 use std::str::FromStr;
 use std::vec;
 
@@ -79,7 +80,7 @@ pub fn instantiate(
     let sub_msg: Vec<SubMsg> = vec![SubMsg {
         msg: WasmMsg::Instantiate {
             code_id: msg.token_code_id,
-            msg: to_binary(&TokenInstantiateMsg {
+            msg: to_json_binary(&TokenInstantiateMsg {
                 name: token_name,
                 symbol: "uLP".to_string(),
                 decimals: 6,
@@ -237,7 +238,7 @@ pub fn receive_cw20(
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     let contract_addr = info.sender.clone();
-    match from_binary(&cw20_msg.msg) {
+    match from_json(&cw20_msg.msg) {
         Ok(Cw20HookMsg::Swap {
             belief_price,
             max_spread,
@@ -353,7 +354,7 @@ pub fn provide_liquidity(
         if let AssetInfo::Token { contract_addr, .. } = &pool.info {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_addr.to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
+                msg: to_json_binary(&Cw20ExecuteMsg::TransferFrom {
                     owner: info.sender.to_string(),
                     recipient: env.contract.address.to_string(),
                     amount: deposits[i],
@@ -448,7 +449,7 @@ fn mint_liquidity_token_message(
     if !auto_stake {
         return Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: recipient.to_string(),
                 amount,
             })?,
@@ -467,7 +468,7 @@ fn mint_liquidity_token_message(
     Ok(vec![
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: env.contract.address.to_string(),
                 amount,
             })?,
@@ -475,10 +476,10 @@ fn mint_liquidity_token_message(
         }),
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Send {
+            msg: to_json_binary(&Cw20ExecuteMsg::Send {
                 contract: generator.unwrap().to_string(),
                 amount,
-                msg: to_binary(&GeneratorHookMsg::DepositFor(recipient))?,
+                msg: to_json_binary(&GeneratorHookMsg::DepositFor(recipient))?,
             })?,
             funds: vec![],
         }),
@@ -534,7 +535,7 @@ pub fn withdraw_liquidity(
             .into_msg(&deps.querier, sender.clone())?,
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.pair_info.liquidity_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Burn { amount })?,
+            msg: to_json_binary(&Cw20ExecuteMsg::Burn { amount })?,
             funds: vec![],
         }),
     ];
@@ -822,15 +823,15 @@ pub fn calculate_maker_fee(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Pair {} => to_binary(&query_pair_info(deps)?),
-        QueryMsg::Pool {} => to_binary(&query_pool(deps)?),
-        QueryMsg::Share { amount } => to_binary(&query_share(deps, amount)?),
-        QueryMsg::Simulation { offer_asset } => to_binary(&query_simulation(deps, offer_asset)?),
+        QueryMsg::Pair {} => to_json_binary(&query_pair_info(deps)?),
+        QueryMsg::Pool {} => to_json_binary(&query_pool(deps)?),
+        QueryMsg::Share { amount } => to_json_binary(&query_share(deps, amount)?),
+        QueryMsg::Simulation { offer_asset } => to_json_binary(&query_simulation(deps, offer_asset)?),
         QueryMsg::ReverseSimulation { ask_asset } => {
-            to_binary(&query_reverse_simulation(deps, ask_asset)?)
+            to_json_binary(&query_reverse_simulation(deps, ask_asset)?)
         }
-        QueryMsg::CumulativePrices {} => to_binary(&query_cumulative_prices(deps, env)?),
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::CumulativePrices {} => to_json_binary(&query_cumulative_prices(deps, env)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
     }
 }
 
@@ -1049,21 +1050,24 @@ pub fn compute_swap(
     // offer => ask
     // ask_amount = (ask_pool - cp / (offer_pool + offer_amount))
     let cp: Uint256 = offer_pool * ask_pool;
-    let return_amount: Uint256 = (Decimal256::from_uint256(ask_pool)
-        - Decimal256::from_ratio(cp, offer_pool + offer_amount))
+    let return_amount: Uint256 = (ask_pool
+        - Decimal256::from_ratio(cp, offer_pool + offer_amount).to_uint_ceil())
         * Uint256::one();
 
     // calculate spread & commission
     let spread_amount: Uint256 =
         (offer_amount * Decimal256::from_ratio(ask_pool, offer_pool)) - return_amount;
+    let unsafe_spread_amount = Uint128::try_from(spread_amount).unwrap();
     let commission_amount: Uint256 = return_amount * commission_rate;
+    let unsafe_commission_amount = Uint128::try_from(commission_amount).unwrap();
 
     // commission will be absorbed to pool
-    let return_amount: Uint256 = return_amount - commission_amount;
+    let return_amount = return_amount - commission_amount;
+    let unsafe_return_amount = Uint128::try_from(return_amount).unwrap();
     Ok((
-        return_amount.into(),
-        spread_amount.into(),
-        commission_amount.into(),
+        unsafe_return_amount,
+        unsafe_spread_amount,
+        unsafe_commission_amount,
     ))
 }
 
@@ -1085,22 +1089,36 @@ fn compute_offer_amount(
 ) -> StdResult<(Uint128, Uint128, Uint128)> {
     // ask => offer
     // offer_amount = cp / (ask_pool - ask_amount / (1 - commission_rate)) - offer_pool
-    let cp = Uint256::from(offer_pool) * Uint256::from(ask_pool);
-    let one_minus_commission = Decimal256::one() - Decimal256::from(commission_rate);
-    let inv_one_minus_commission: Decimal = (Decimal256::one() / one_minus_commission).into();
+    let cp = Uint256::from_uint128(offer_pool * ask_pool);
+    let dec256_commission_rate = Decimal256::from(commission_rate);
+    let uint256_ask_amount = Uint256::from_uint128(ask_amount);
 
-    let offer_amount: Uint128 = Uint128::from(cp.multiply_ratio(
+    let one_minus_commission = Decimal256::one() - dec256_commission_rate;
+    let inv_one_minus_commission = Decimal256::one() / one_minus_commission;
+
+    let a = inv_one_minus_commission.mul(uint256_ask_amount);
+    let b = Uint256::from_uint128(ask_pool).checked_sub(a).unwrap();
+    
+    let offer_amount = cp.multiply_ratio(
         Uint256::one(),
-        Uint256::from(ask_pool.checked_sub(ask_amount * inv_one_minus_commission)?),
-    ))
-    .checked_sub(offer_pool)?;
+        b,
+    )
+    .checked_sub(Uint256::from_uint128(offer_pool))
+    .unwrap();
+    let unsafe_offer_amount = Uint128::try_from(offer_amount).unwrap();
 
-    let before_commission_deduction = ask_amount * inv_one_minus_commission;
-    let spread_amount = (offer_amount * Decimal::from_ratio(ask_pool, offer_pool))
+    let before_commission_deduction = inv_one_minus_commission.mul(uint256_ask_amount);
+
+    let spread_amount = Decimal256::from_ratio(ask_pool, offer_pool)
+        .mul(Uint256::from_uint128(unsafe_offer_amount))
         .checked_sub(before_commission_deduction)
-        .unwrap_or_else(|_| Uint128::zero());
-    let commission_amount = before_commission_deduction * commission_rate;
-    Ok((offer_amount, spread_amount, commission_amount))
+        .unwrap_or_else(|_| Uint256::zero());
+    let unsafe_spread_amount = Uint128::try_from(spread_amount).unwrap();
+
+    let commission_amount = dec256_commission_rate.mul(before_commission_deduction);
+    let unsafe_commission_amount = Uint128::try_from(commission_amount).unwrap();
+
+    Ok((unsafe_offer_amount, unsafe_spread_amount, unsafe_commission_amount))
 }
 
 /// ## Description
@@ -1123,6 +1141,8 @@ pub fn assert_max_spread(
     return_amount: Uint128,
     spread_amount: Uint128,
 ) -> Result<(), ContractError> {
+    let uint256_return_amount = Uint256::from_uint128(return_amount);
+
     let default_spread = Decimal::from_str(DEFAULT_SLIPPAGE)?;
     let max_allowed_spread = Decimal::from_str(MAX_ALLOWED_SLIPPAGE)?;
 
@@ -1132,14 +1152,13 @@ pub fn assert_max_spread(
     }
 
     if let Some(belief_price) = belief_price {
-        let expected_return =
-            offer_amount * Decimal::from(Decimal256::one() / Decimal256::from(belief_price));
+        let expected_return = (Decimal256::one() / Decimal256::from(belief_price)).mul(Uint256::from_uint128(offer_amount));
         let spread_amount = expected_return
-            .checked_sub(return_amount)
-            .unwrap_or_else(|_| Uint128::zero());
+            .checked_sub(uint256_return_amount)
+            .unwrap_or_else(|_| Uint256::zero());
 
-        if return_amount < expected_return
-            && Decimal::from_ratio(spread_amount, expected_return) > max_spread
+        if uint256_return_amount < expected_return
+            && Decimal256::from_ratio(spread_amount, expected_return) > Decimal256::from(max_spread)
         {
             return Err(ContractError::MaxSpreadAssertion {});
         }

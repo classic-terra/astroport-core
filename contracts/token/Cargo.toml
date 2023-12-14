@@ -1,8 +1,8 @@
 [package]
 name = "astroport-token"
-version = "1.0.0-fix-name"
+version = "2.0.0"
 authors = ["Astroport"]
-edition = "2018"
+edition = "2021"
 description = "Expanded implementation of a CosmWasm-20 compliant token for post intialization"
 license = "MIT"
 repository = "https://github.com/CosmWasm/cosmwasm-plus"
@@ -22,7 +22,7 @@ astroport = { path = "../../packages/astroport", default-features = false }
 cw2 = "0.15"
 cw20 = "0.15"
 cw20-base = { version = "0.15", features = ["library"] }
-cosmwasm-std = "1.1"
+cosmwasm-std = "1.5"
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 snafu = "0.6"

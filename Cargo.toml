@@ -2,6 +2,8 @@
 members = [
     "packages/*",
     "contracts/token",
+    "contracts/factory",
+    "contracts/pair",
 ]
 
 [profile.release]

@@ -5,11 +5,10 @@ use crate::math::{
 };
 use crate::state::{Config, CONFIG};
 
-use cosmwasm_bignumber::Decimal256;
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
+    attr, entry_point, from_json, to_json_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg,
+    WasmMsg, Decimal256
 };
 
 use crate::response::MsgInstantiateContractResponse;
@@ -36,6 +35,7 @@ use protobuf::Message;
 use std::cmp::Ordering;
 use std::str::FromStr;
 use std::vec;
+use std::convert::TryFrom;
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "astroport-pair-stable";
@@ -74,7 +74,7 @@ pub fn instantiate(
         return Err(ContractError::InitParamsNotFound {});
     }
 
-    let params: StablePoolParams = from_binary(&msg.init_params.unwrap())?;
+    let params: StablePoolParams = from_json(&msg.init_params.unwrap())?;
 
     if params.amp == 0 || params.amp > MAX_AMP {
         return Err(ContractError::IncorrectAmp {});
@@ -107,7 +107,7 @@ pub fn instantiate(
     let sub_msg: Vec<SubMsg> = vec![SubMsg {
         msg: WasmMsg::Instantiate {
             code_id: msg.token_code_id,
-            msg: to_binary(&TokenInstantiateMsg {
+            msg: to_json_binary(&TokenInstantiateMsg {
                 name: token_name,
                 symbol: "uLP".to_string(),
                 decimals: 6,
@@ -266,7 +266,7 @@ pub fn receive_cw20(
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     let contract_addr = info.sender.clone();
-    match from_binary(&cw20_msg.msg) {
+    match from_json(&cw20_msg.msg) {
         Ok(Cw20HookMsg::Swap {
             belief_price,
             max_spread,
@@ -387,7 +387,7 @@ pub fn provide_liquidity(
             if let AssetInfo::Token { contract_addr, .. } = &pool.info {
                 messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: contract_addr.to_string(),
-                    msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
+                    msg: to_json_binary(&Cw20ExecuteMsg::TransferFrom {
                         owner: info.sender.to_string(),
                         recipient: env.contract.address.to_string(),
                         amount: deposits[i],
@@ -529,7 +529,7 @@ fn mint_liquidity_token_message(
     if !auto_stake {
         return Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: recipient.to_string(),
                 amount,
             })?,
@@ -548,7 +548,7 @@ fn mint_liquidity_token_message(
     Ok(vec![
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: env.contract.address.to_string(),
                 amount,
             })?,
@@ -556,10 +556,10 @@ fn mint_liquidity_token_message(
         }),
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Send {
+            msg: to_json_binary(&Cw20ExecuteMsg::Send {
                 contract: generator.unwrap().to_string(),
                 amount,
-                msg: to_binary(&GeneratorHookMsg::DepositFor(recipient))?,
+                msg: to_json_binary(&GeneratorHookMsg::DepositFor(recipient))?,
             })?,
             funds: vec![],
         }),
@@ -619,7 +619,7 @@ pub fn withdraw_liquidity(
             .into_msg(&deps.querier, sender.clone())?,
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.pair_info.liquidity_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Burn { amount })?,
+            msg: to_json_binary(&Cw20ExecuteMsg::Burn { amount })?,
             funds: vec![],
         }),
     ];
@@ -943,17 +943,17 @@ pub fn calculate_maker_fee(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Pair {} => to_binary(&query_pair_info(deps)?),
-        QueryMsg::Pool {} => to_binary(&query_pool(deps)?),
-        QueryMsg::Share { amount } => to_binary(&query_share(deps, amount)?),
+        QueryMsg::Pair {} => to_json_binary(&query_pair_info(deps)?),
+        QueryMsg::Pool {} => to_json_binary(&query_pool(deps)?),
+        QueryMsg::Share { amount } => to_json_binary(&query_share(deps, amount)?),
         QueryMsg::Simulation { offer_asset } => {
-            to_binary(&query_simulation(deps, env, offer_asset)?)
+            to_json_binary(&query_simulation(deps, env, offer_asset)?)
         }
         QueryMsg::ReverseSimulation { ask_asset } => {
-            to_binary(&query_reverse_simulation(deps, env, ask_asset)?)
+            to_json_binary(&query_reverse_simulation(deps, env, ask_asset)?)
         }
-        QueryMsg::CumulativePrices {} => to_binary(&query_cumulative_prices(deps, env)?),
-        QueryMsg::Config {} => to_binary(&query_config(deps, env)?),
+        QueryMsg::CumulativePrices {} => to_json_binary(&query_cumulative_prices(deps, env)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps, env)?),
     }
 }
 
@@ -1143,7 +1143,7 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
     let config: Config = CONFIG.load(deps.storage)?;
     Ok(ConfigResponse {
         block_time_last: config.block_time_last,
-        params: Some(to_binary(&StablePoolConfig {
+        params: Some(to_json_binary(&StablePoolConfig {
             amp: Decimal::from_ratio(compute_current_amp(&config, &env)?, AMP_PRECISION),
         })?),
     })
@@ -1234,8 +1234,9 @@ fn compute_offer_amount(
     let ask_amount = adjust_precision(ask_amount, ask_precision, greater_precision)?;
 
     let one_minus_commission = Decimal256::one() - Decimal256::from(commission_rate);
-    let inv_one_minus_commission: Decimal = (Decimal256::one() / one_minus_commission).into();
-    let before_commission_deduction = ask_amount * inv_one_minus_commission;
+    let inv_one_minus_commission: Decimal256 = (Decimal256::one() / one_minus_commission).into();
+    let unsafe_inv_one_minus_commission = Uint128::try_from(inv_one_minus_commission.to_uint_floor()).unwrap();
+    let before_commission_deduction = ask_amount * unsafe_inv_one_minus_commission;
 
     let offer_amount = Uint128::new(
         calc_offer_amount(
@@ -1312,8 +1313,10 @@ pub fn assert_max_spread(
     }
 
     if let Some(belief_price) = belief_price {
+        let belief_price_ratio = Decimal256::one() / Decimal256::from(belief_price);
+        let unsafe_belief_price_ratio = Uint128::try_from(belief_price_ratio.to_uint_floor()).unwrap();
         let expected_return =
-            offer_amount * Decimal::from(Decimal256::one() / Decimal256::from(belief_price));
+            offer_amount * unsafe_belief_price_ratio;
         let spread_amount = expected_return
             .checked_sub(return_amount)
             .unwrap_or_else(|_| Uint128::zero());
@@ -1400,7 +1403,7 @@ pub fn update_config(
         return Err(ContractError::Unauthorized {});
     }
 
-    match from_binary::<StablePoolUpdateParams>(&params)? {
+    match from_json::<StablePoolUpdateParams>(&params)? {
         StablePoolUpdateParams::StartChangingAmp {
             next_amp,
             next_amp_time,

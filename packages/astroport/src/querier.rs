@@ -6,7 +6,7 @@ use crate::factory::{
 use crate::pair::{QueryMsg as PairQueryMsg, ReverseSimulationResponse, SimulationResponse};
 
 use cosmwasm_std::{
-    to_binary, Addr, AllBalanceResponse, BalanceResponse, BankQuery, Coin, Decimal, QuerierWrapper,
+    to_json_binary, Addr, AllBalanceResponse, BalanceResponse, BankQuery, Coin, Decimal, QuerierWrapper,
     QueryRequest, StdResult, Uint128, WasmQuery,
 };
 
@@ -67,7 +67,7 @@ pub fn query_token_balance(
     let res: Cw20BalanceResponse = querier
         .query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: String::from(contract_addr),
-            msg: to_binary(&Cw20QueryMsg::Balance {
+            msg: to_json_binary(&Cw20QueryMsg::Balance {
                 address: String::from(account_addr),
             })?,
         }))
@@ -87,7 +87,7 @@ pub fn query_token_balance(
 pub fn query_token_symbol(querier: &QuerierWrapper, contract_addr: Addr) -> StdResult<String> {
     let res: TokenInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: String::from(contract_addr),
-        msg: to_binary(&Cw20QueryMsg::TokenInfo {})?,
+        msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
     }))?;
 
     Ok(res.symbol)
@@ -102,7 +102,7 @@ pub fn query_token_symbol(querier: &QuerierWrapper, contract_addr: Addr) -> StdR
 pub fn query_supply(querier: &QuerierWrapper, contract_addr: Addr) -> StdResult<Uint128> {
     let res: TokenInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: String::from(contract_addr),
-        msg: to_binary(&Cw20QueryMsg::TokenInfo {})?,
+        msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
     }))?;
 
     Ok(res.total_supply)
@@ -138,7 +138,7 @@ pub fn query_factory_config(
 ) -> StdResult<FactoryConfigResponse> {
     querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: factory_contract.to_string(),
-        msg: to_binary(&FactoryQueryMsg::Config {})?,
+        msg: to_json_binary(&FactoryQueryMsg::Config {})?,
     }))
 }
 
@@ -168,7 +168,7 @@ pub fn query_fee_info(
 ) -> StdResult<FeeInfo> {
     let res: FeeInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: factory_contract.to_string(),
-        msg: to_binary(&FactoryQueryMsg::FeeInfo { pair_type })?,
+        msg: to_json_binary(&FactoryQueryMsg::FeeInfo { pair_type })?,
     }))?;
 
     Ok(FeeInfo {
@@ -193,7 +193,7 @@ pub fn query_pair_info(
 ) -> StdResult<PairInfo> {
     querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: factory_contract.to_string(),
-        msg: to_binary(&FactoryQueryMsg::Pair {
+        msg: to_json_binary(&FactoryQueryMsg::Pair {
             asset_infos: asset_infos.clone(),
         })?,
     }))
@@ -217,7 +217,7 @@ pub fn query_pairs_info(
 ) -> StdResult<PairsResponse> {
     querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: factory_contract.to_string(),
-        msg: to_binary(&FactoryQueryMsg::Pairs { start_after, limit })?,
+        msg: to_json_binary(&FactoryQueryMsg::Pairs { start_after, limit })?,
     }))
 }
 
@@ -236,7 +236,7 @@ pub fn simulate(
 ) -> StdResult<SimulationResponse> {
     querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: pair_contract.to_string(),
-        msg: to_binary(&PairQueryMsg::Simulation {
+        msg: to_json_binary(&PairQueryMsg::Simulation {
             offer_asset: offer_asset.clone(),
         })?,
     }))
@@ -257,7 +257,7 @@ pub fn reverse_simulate(
 ) -> StdResult<ReverseSimulationResponse> {
     querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: pair_contract.to_string(),
-        msg: to_binary(&PairQueryMsg::ReverseSimulation {
+        msg: to_json_binary(&PairQueryMsg::ReverseSimulation {
             ask_asset: ask_asset.clone(),
         })?,
     }))

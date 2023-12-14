@@ -1,7 +1,7 @@
 use classic_rust::types::terra::treasury::v1beta1::{QueryTaxCapRequest, QueryTaxRateResponse, QueryTaxCapResponse};
 use cosmwasm_std::testing::{MockQuerier, MockStorage, MockApi, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, from_slice, to_binary, Decimal, Querier, QuerierResult,
+    from_json, to_json_binary, Decimal, Querier, QuerierResult,
     QueryRequest, SystemError, SystemResult, Uint128, WasmQuery, Empty, Binary, OwnedDeps, Coin,
 };
 
@@ -119,7 +119,7 @@ pub(crate) fn pairs_to_map(pairs: &[(&String, &PairInfo)]) -> HashMap<String, Pa
 impl Querier for WasmMockQuerier {
     fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
         // MockQuerier doesn't support Custom, so we ignore it completely here
-        let request: QueryRequest<Empty> = match from_slice(bin_request) {
+        let request: QueryRequest<Empty> = match from_json(bin_request) {
             Ok(v) => v,
             Err(e) => {
                 return SystemResult::Err(SystemError::InvalidRequest {
@@ -149,7 +149,7 @@ impl CW20QueryHandler {
     pub fn execute(&self, request: &QueryRequest<Empty>) -> QuerierResult {
         match &request {
             QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
-                match from_binary(&msg).unwrap() {
+                match from_json(&msg).unwrap() {
                     Cw20QueryMsg::TokenInfo {} => {
                         let balances: &HashMap<String, Uint128> =
                             match self.token_querier.balances.get(contract_addr) {
@@ -166,7 +166,7 @@ impl CW20QueryHandler {
                         }
 
                         SystemResult::Ok(
-                            to_binary(&TokenInfoResponse {
+                            to_json_binary(&TokenInfoResponse {
                                 name: "mAPPL".to_string(),
                                 symbol: "mAPPL".to_string(),
                                 decimals: 6,
@@ -191,7 +191,7 @@ impl CW20QueryHandler {
                             }
                         };
 
-                        SystemResult::Ok(to_binary(&BalanceResponse { balance: *balance }).into())
+                        SystemResult::Ok(to_json_binary(&BalanceResponse { balance: *balance }).into())
                     }
                     _ => panic!("DO NOT ENTER HERE"),
                 }
@@ -218,7 +218,7 @@ impl DefaultQueryHandler {
                         let res = QueryTaxRateResponse {
                             tax_rate: self.tax_querier.rate.to_string(),
                         };
-                        SystemResult::Ok(to_binary(&res).into())
+                        SystemResult::Ok(to_json_binary(&res).into())
                     }
                     "/terra.treasury.v1beta1.Query/TaxCap" => {
                         let req : QueryTaxCapRequest = Binary::try_into(data.clone()).unwrap();
@@ -232,7 +232,7 @@ impl DefaultQueryHandler {
                         let res = QueryTaxCapResponse { 
                             tax_cap: cap.to_string(),
                         };
-                        SystemResult::Ok(to_binary(&res).into())
+                        SystemResult::Ok(to_json_binary(&res).into())
                     }
                     _ => panic!("NO SUCH REQUEST")
                 }
@@ -240,11 +240,11 @@ impl DefaultQueryHandler {
             QueryRequest::Wasm(WasmQuery::Smart {
                 contract_addr: _,
                 msg,
-            }) => match from_binary(&msg).unwrap() {
+            }) => match from_json(&msg).unwrap() {
                 FactoryQueryMsg::Pair { asset_infos } => {
                     let key = asset_infos[0].to_string() + asset_infos[1].to_string().as_str();
                     match self.astroport_factory_querier.pairs.get(&key) {
-                        Some(v) => SystemResult::Ok(to_binary(&v).into()),
+                        Some(v) => SystemResult::Ok(to_json_binary(&v).into()),
                         None => SystemResult::Err(SystemError::InvalidRequest {
                             error: "No pair info exists".to_string(),
                             request: msg.as_slice().into(),
