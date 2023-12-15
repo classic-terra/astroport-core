@@ -1,15 +1,13 @@
-use std::str::FromStr;
-
 use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{
     ExecuteMsg as FactoryExecuteMsg, InstantiateMsg as FactoryInstantiateMsg, PairConfig, PairType,
     QueryMsg as FactoryQueryMsg,
 };
 use astroport::pair::{
-    CumulativePricesResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, TWAP_PRECISION, PoolResponse,
+    CumulativePricesResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, TWAP_PRECISION,
 };
 use astroport::token::InstantiateMsg as TokenInstantiateMsg;
-use classic_test_tube::classic_rust::types::cosmos::bank::v1beta1::{MsgSend, QueryAllBalancesRequest};
+use classic_test_tube::classic_rust::types::cosmos::bank::v1beta1::MsgSend;
 use classic_test_tube::classic_rust::types::cosmos::base::v1beta1::Coin as ClassicCoin;
 use cosmwasm_std::{attr, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw20::{BalanceResponse, Cw20Coin, Cw20ExecuteMsg, Cw20QueryMsg, MinterResponse};
@@ -429,7 +427,6 @@ fn test_compatibility_of_tokens_with_different_precision() {
 fn test_if_twap_is_calculated_correctly_when_pool_idles() {
     let app = TerraTestApp::new();
     let wasm = Wasm::new(&app);
-    let bank = Bank::new(&app);
 
     let user1 = app.init_account(
         &[
@@ -451,11 +448,6 @@ fn test_if_twap_is_calculated_correctly_when_pool_idles() {
 
     // instantiate pair
     let pair_instance = instantiate_pair(&app, &user1);
-
-    let res = bank.query_all_balances(&QueryAllBalancesRequest{
-        address: user1.address(),
-        pagination: None
-    }).unwrap();
 
     // provide liquidity, accumulators are empty
     let (msg, coins) = provide_liquidity_msg(

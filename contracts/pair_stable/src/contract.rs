@@ -8,7 +8,7 @@ use crate::state::{Config, CONFIG};
 use cosmwasm_std::{
     attr, entry_point, from_json, to_json_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg, Decimal256
+    WasmMsg, Decimal256, Uint256
 };
 
 use crate::response::MsgInstantiateContractResponse;
@@ -33,6 +33,7 @@ use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use std::cmp::Ordering;
+use std::ops::Mul;
 use std::str::FromStr;
 use std::vec;
 use std::convert::TryFrom;
@@ -1234,24 +1235,24 @@ fn compute_offer_amount(
     let ask_amount = adjust_precision(ask_amount, ask_precision, greater_precision)?;
 
     let one_minus_commission = Decimal256::one() - Decimal256::from(commission_rate);
-    let inv_one_minus_commission: Decimal256 = (Decimal256::one() / one_minus_commission).into();
-    let unsafe_inv_one_minus_commission = Uint128::try_from(inv_one_minus_commission.to_uint_floor()).unwrap();
-    let before_commission_deduction = ask_amount * unsafe_inv_one_minus_commission;
+    let inv_one_minus_commission = Decimal256::one() / one_minus_commission;
+    let before_commission_deduction = inv_one_minus_commission.mul(Uint256::from_uint128(ask_amount));
+    let unsafe_before_commission_deduction = Uint128::try_from(before_commission_deduction).unwrap();
 
     let offer_amount = Uint128::new(
         calc_offer_amount(
             offer_pool.u128(),
             ask_pool.u128(),
-            before_commission_deduction.u128(),
+            unsafe_before_commission_deduction.u128(),
             amp,
         )
         .unwrap(),
     );
 
     // We assume the assets should stay in a 1:1 ratio, the true exchange rate is 1. So any exchange rate <1 could be considered the spread
-    let spread_amount = offer_amount.saturating_sub(before_commission_deduction);
+    let spread_amount = offer_amount.saturating_sub(unsafe_before_commission_deduction);
 
-    let commission_amount = before_commission_deduction * commission_rate;
+    let commission_amount = unsafe_before_commission_deduction * commission_rate;
 
     let offer_amount = adjust_precision(offer_amount, greater_precision, offer_precision)?;
     let spread_amount = adjust_precision(spread_amount, greater_precision, ask_precision)?;
@@ -1313,16 +1314,15 @@ pub fn assert_max_spread(
     }
 
     if let Some(belief_price) = belief_price {
+        let uint256_return_amount = Uint256::from_uint128(return_amount);
         let belief_price_ratio = Decimal256::one() / Decimal256::from(belief_price);
-        let unsafe_belief_price_ratio = Uint128::try_from(belief_price_ratio.to_uint_floor()).unwrap();
-        let expected_return =
-            offer_amount * unsafe_belief_price_ratio;
+        let expected_return = belief_price_ratio.mul(Uint256::from_uint128(offer_amount));
         let spread_amount = expected_return
-            .checked_sub(return_amount)
-            .unwrap_or_else(|_| Uint128::zero());
+            .checked_sub(uint256_return_amount)
+            .unwrap_or_else(|_| Uint256::zero());
 
-        if return_amount < expected_return
-            && Decimal::from_ratio(spread_amount, expected_return) > max_spread
+        if uint256_return_amount < expected_return
+            && Decimal256::from_ratio(spread_amount, expected_return) > Decimal256::from(max_spread)
         {
             return Err(ContractError::MaxSpreadAssertion {});
         }

@@ -24,6 +24,8 @@ pub struct StableSwapModel {
 
 impl StableSwapModel {
     pub fn new(amp_factor: u128, balances: Vec<u128>, n_coins: u8) -> StableSwapModel {
+        pyo3::prepare_freethreaded_python();
+
         let mut src_file = File::open(FILE_PATH).unwrap();
         let mut src_content = String::new();
         let _ = src_file.read_to_string(&mut src_content);

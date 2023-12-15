@@ -4,6 +4,7 @@ members = [
     "contracts/token",
     "contracts/factory",
     "contracts/pair",
+    "contracts/pair_stable",
 ]
 
 [profile.release]
