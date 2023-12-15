@@ -17,8 +17,8 @@ backtraces = ["cosmwasm-std/backtraces"]
 
 [dependencies]
 cw20 = "0.15"
-classic-bindings = { version = "0.2.0", features = ["stargate"] }
-classic-rust = "0.1.0"
+classic-bindings = { version = "0.2.1", features = ["stargate"] }
+classic-rust = "0.2.0"
 cosmwasm-std = "1.5"
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }

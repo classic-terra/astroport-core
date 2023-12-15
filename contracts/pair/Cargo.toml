@@ -35,11 +35,11 @@ thiserror = { version = "1.0.20" }
 protobuf = { version = "2", features = ["with-bytes"] }
 
 [dev-dependencies]
-cosmwasm-vm = { version = "1.1" }
-cosmwasm-schema = "1.1"
+cosmwasm-vm = { version = "1.5" }
+cosmwasm-schema = "1.5"
 astroport-token = {path = "../token"}
 astroport-factory = {path = "../factory"}
 proptest = "1.0"
-classic-test-tube = "0.2.1"
-classic-bindings = { version = "0.2.0", features = ["stargate"] }
-classic-rust = "0.1.0"
+classic-test-tube = {version = "0.2.2", git = "https://github.com/classic-terra/classic-rust.git", package = "classic-test-tube", rev = "2fa99dc4de9a250f3f9d13ee24dc82ffa12be0f1"}
+classic-bindings = { version = "0.2.1", features = ["stargate"] }
+classic-rust = "0.2.0"

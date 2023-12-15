@@ -41,6 +41,6 @@ proptest = "1.0.0"
 sim =  { path = "../sim" }
 astroport-token = {path = "../token"}
 classic-test-tube = "0.2.1"
-classic-bindings = { version = "0.2.0", features = ["stargate"] }
+classic-bindings = { version = "0.2.1", features = ["stargate"] }
 classic-rust = "0.1.0"
 astroport-factory = {path = "../factory"}

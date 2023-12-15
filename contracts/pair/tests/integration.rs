@@ -1,15 +1,19 @@
+use std::str::FromStr;
+
 use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{
     ExecuteMsg as FactoryExecuteMsg, InstantiateMsg as FactoryInstantiateMsg, PairConfig, PairType,
     QueryMsg as FactoryQueryMsg,
 };
 use astroport::pair::{
-    CumulativePricesResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, TWAP_PRECISION,
+    CumulativePricesResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, TWAP_PRECISION, PoolResponse,
 };
 use astroport::token::InstantiateMsg as TokenInstantiateMsg;
+use classic_test_tube::classic_rust::types::cosmos::bank::v1beta1::{MsgSend, QueryAllBalancesRequest};
+use classic_test_tube::classic_rust::types::cosmos::base::v1beta1::Coin as ClassicCoin;
 use cosmwasm_std::{attr, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw20::{BalanceResponse, Cw20Coin, Cw20ExecuteMsg, Cw20QueryMsg, MinterResponse};
-use classic_test_tube::{TerraTestApp, Wasm, SigningAccount, Module, Account};
+use classic_test_tube::{TerraTestApp, Wasm, SigningAccount, Module, Account, Bank, FeeSetting};
 
 fn store_token_code(wasm: &Wasm<TerraTestApp>, owner: &SigningAccount) -> u64 {
     let astro_token_contract = std::fs::read("../../artifacts/astroport_token.wasm").unwrap();
@@ -76,11 +80,12 @@ fn instantiate_pair<'a>(app: &'a TerraTestApp, owner: &'a SigningAccount) -> Str
 fn test_provide_and_withdraw_liquidity() {
     let app = TerraTestApp::new();
     let wasm = Wasm::new(&app);
+    let bank: Bank<'_, _> = Bank::new(&app);
 
     // Set balances
     let accs = app.init_accounts(
         &[
-            Coin::new(233u128, "uusd"),
+            Coin::new(1000u128, "uusd"),
             Coin::new(1000000000000u128, "uluna"),
         ],
         2
@@ -107,21 +112,29 @@ fn test_provide_and_withdraw_liquidity() {
     );
 
     // When dealing with native tokens transfer should happen before contract call, which cw-multitest doesn't support
-    // router
-    //     .init_bank_balance(
-    //         &pair_instance,
-    //         vec![
-    //             Coin {
-    //                 denom: "uusd".to_string(),
-    //                 amount: Uint128::new(100u128),
-    //             },
-    //             Coin {
-    //                 denom: "uluna".to_string(),
-    //                 amount: Uint128::new(100u128),
-    //             },
-    //         ],
-    //     )
-    //     .unwrap();
+    let msg_send = MsgSend {
+        from_address: owner.address(),
+        to_address: pair_instance.clone(),
+        amount: vec![
+            ClassicCoin {
+                denom: "uusd".to_string(),
+                amount: "100".to_string(),
+            }
+        ],
+    };
+    let _ = bank.send(msg_send, owner).unwrap();
+
+    let msg_send = MsgSend {
+        from_address: owner.address(),
+        to_address: pair_instance.clone(),
+        amount: vec![
+            ClassicCoin {
+                denom: "uluna".to_string(),
+                amount: "100".to_string(),
+            }
+        ],
+    };
+    let _ = bank.send(msg_send, owner).unwrap();
 
     // Provide liquidity
     let (msg, coins) = provide_liquidity_msg(Uint128::new(100), Uint128::new(100), None, None);
@@ -152,8 +165,6 @@ fn test_provide_and_withdraw_liquidity() {
         None,
     );
     let res = wasm.execute(&pair_instance, &msg, &coins, alice_address).unwrap();
-
-    println!("res events = {:?}", res.events);
 
     assert_eq!(
         res.events[13].attributes[1],
@@ -301,7 +312,7 @@ fn test_compatibility_of_tokens_with_different_precision() {
             is_disabled: None,
         }],
         token_code_id,
-        generator_address: Some(String::from("generator")),
+        generator_address: Some(String::from("terra1rmwsanjl4tple6k3fjtqgmaepfefdwzvr6hyff")),
         owner: owner.address(),
         whitelist_code_id: 234u64,
     };
@@ -310,7 +321,7 @@ fn test_compatibility_of_tokens_with_different_precision() {
         .instantiate(
             factory_code_id, 
             &init_msg, 
-            Some(owner.address().as_str()), 
+            Some(&owner.address()), 
             Some("FACTORY"), 
             &[], 
             owner
@@ -386,7 +397,7 @@ fn test_compatibility_of_tokens_with_different_precision() {
 
     wasm.execute(pair_instance.as_str(), &msg, &[], owner).unwrap();
 
-    let user = Addr::unchecked("user");
+    let user = Addr::unchecked("terra1rmwsanjl4tple6k3fjtqgmaepfefdwzvr6hyff");
 
     let msg = Cw20ExecuteMsg::Send {
         contract: pair_instance.to_string(),
@@ -418,25 +429,42 @@ fn test_compatibility_of_tokens_with_different_precision() {
 fn test_if_twap_is_calculated_correctly_when_pool_idles() {
     let app = TerraTestApp::new();
     let wasm = Wasm::new(&app);
+    let bank = Bank::new(&app);
 
-    let user1 = &app.init_account(
+    let user1 = app.init_account(
         &[
-            Coin::new(4000000_000000, "uusd"),
-            Coin::new(2000000_000000, "uluna"),
+            Coin::new(4_000_000_000_000_000, "uusd"),
+            Coin::new(4_000_000_000_000_000, "uluna"),
         ],
-    ).unwrap();
+    )
+    .unwrap()
+    .with_fee_setting(FeeSetting::Custom { 
+        amounts: vec![Coin {
+            denom: "uluna".to_string(),
+            amount: Uint128::new(1_000_000_000_000),
+        }, Coin {
+            denom: "uusd".to_string(),
+            amount: Uint128::new(1_000_000_000_000),
+        }], 
+        gas_limit: 1_000_000_000
+    });
 
     // instantiate pair
-    let pair_instance = instantiate_pair(&app, user1);
+    let pair_instance = instantiate_pair(&app, &user1);
+
+    let res = bank.query_all_balances(&QueryAllBalancesRequest{
+        address: user1.address(),
+        pagination: None
+    }).unwrap();
 
     // provide liquidity, accumulators are empty
     let (msg, coins) = provide_liquidity_msg(
-        Uint128::new(1000000_000000),
-        Uint128::new(1000000_000000),
+        Uint128::new(1_000_000_000_000),
+        Uint128::new(1_000_000_000_000),
         None,
         Option::from(Decimal::one()),
     );
-    wasm.execute(&pair_instance, &msg, &coins, user1).unwrap();
+    wasm.execute(&pair_instance, &msg, &coins, &user1).unwrap();
 
     const BLOCKS_PER_DAY: u64 = 17280;
     const ELAPSED_SECONDS: u64 = BLOCKS_PER_DAY * 5;
@@ -446,12 +474,12 @@ fn test_if_twap_is_calculated_correctly_when_pool_idles() {
 
     // provide liquidity, accumulators firstly filled with the same prices
     let (msg, coins) = provide_liquidity_msg(
-        Uint128::new(2000000_000000),
-        Uint128::new(1000000_000000),
+        Uint128::new(2_000_000_000_000),
+        Uint128::new(1_000_000_000_000),
         None,
         Some(Decimal::percent(50)),
     );
-    wasm.execute(&pair_instance, &msg, &coins, user1).unwrap();
+    wasm.execute(&pair_instance, &msg, &coins, &user1).unwrap();
 
     // get current twap accumulator values
     let msg = QueryMsg::CumulativePrices {};
@@ -512,5 +540,5 @@ fn create_pair_with_same_assets() {
         owner
     ).unwrap_err();
 
-    assert_eq!(resp.to_string(), "Doubling assets in asset infos")
+    assert_eq!(resp.to_string(), "execute error: failed to execute message; message index: 0: Doubling assets in asset infos: instantiate wasm contract failed")
 }
