@@ -1,4 +1,4 @@
-use std::ops::{Div, Sub};
+use std::ops::Div;
 
 use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{
@@ -15,7 +15,7 @@ use astroport_pair_stable::math::{MAX_AMP, MAX_AMP_CHANGE, MIN_AMP_CHANGING_TIME
 use classic_test_tube::classic_rust::types::cosmos::bank::v1beta1::MsgSend;
 use classic_test_tube::classic_rust::types::cosmos::base::v1beta1::Coin as ClassicCoin;
 use cosmwasm_std::{
-    attr, from_json, to_json_binary, Addr, Coin, Decimal, Uint128, WasmQuery,
+    attr, from_json, to_json_binary, Addr, Coin, Decimal, Uint128,
 };
 use cw20::{BalanceResponse, Cw20Coin, Cw20ExecuteMsg, Cw20QueryMsg, MinterResponse};
 use classic_test_tube::{TerraTestApp, Wasm, SigningAccount, Module, Account, Bank, FeeSetting};
