@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Addr, Api, Binary, Coin, CosmosMsg, Decimal, Deps,
+    entry_point, from_json, to_json_binary, Addr, Api, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg,
     WasmQuery,
 };
@@ -18,7 +18,7 @@ use astroport::router::{
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
 use std::collections::HashMap;
-use terra_cosmwasm::{SwapResponse, TerraMsgWrapper, TerraQuerier};
+use classic_bindings::{SwapResponse, TerraMsg, TerraStargateQuerier};
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "astroport-router";
@@ -42,7 +42,7 @@ pub fn instantiate(
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
-) -> Result<Response<TerraMsgWrapper>, ContractError> {
+) -> Result<Response<TerraMsg>, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     CONFIG.save(
@@ -91,7 +91,7 @@ pub fn execute(
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response<TerraMsgWrapper>, ContractError> {
+) -> Result<Response<TerraMsg>, ContractError> {
     match msg {
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::ExecuteSwapOperations {
@@ -146,9 +146,9 @@ pub fn receive_cw20(
     env: Env,
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
-) -> Result<Response<TerraMsgWrapper>, ContractError> {
+) -> Result<Response<TerraMsg>, ContractError> {
     let sender = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
-    match from_binary(&cw20_msg.msg)? {
+    match from_json(&cw20_msg.msg)? {
         Cw20HookMsg::ExecuteSwapOperations {
             operations,
             minimum_receive,
@@ -177,7 +177,7 @@ pub fn receive_cw20(
 
 /// ## Description
 /// Performs swap operations with the specified parameters.
-/// Returns an [`ContractError`] on failureб otherwise returns [`Response`] with the specified messages of type [`TerraMsgWrapper`] to execute if the operation is successful.
+/// Returns an [`ContractError`] on failureб otherwise returns [`Response`] with the specified messages of type [`TerraMsg`] to execute if the operation is successful.
 /// ## Params
 /// * **deps** is the object of type [`DepsMut`].
 ///
@@ -202,7 +202,7 @@ pub fn execute_swap_operations(
     minimum_receive: Option<Uint128>,
     to: Option<Addr>,
     max_spread: Option<Decimal>,
-) -> Result<Response<TerraMsgWrapper>, ContractError> {
+) -> Result<Response<TerraMsg>, ContractError> {
     let operations_len = operations.len();
     if operations_len == 0 {
         return Err(ContractError::MustProvideOperations {});
@@ -224,14 +224,14 @@ pub fn execute_swap_operations(
     let target_asset_info = operations.last().unwrap().get_target_asset_info();
 
     let mut operation_index = 0;
-    let mut messages: Vec<CosmosMsg<TerraMsgWrapper>> = operations
+    let mut messages: Vec<CosmosMsg<TerraMsg>> = operations
         .into_iter()
         .map(|op| {
             operation_index += 1;
             Ok(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: env.contract.address.to_string(),
                 funds: vec![],
-                msg: to_binary(&ExecuteMsg::ExecuteSwapOperation {
+                msg: to_json_binary(&ExecuteMsg::ExecuteSwapOperation {
                     operation: op,
                     to: if operation_index == operations_len {
                         Some(to.to_string())
@@ -242,7 +242,7 @@ pub fn execute_swap_operations(
                 })?,
             }))
         })
-        .collect::<StdResult<Vec<CosmosMsg<TerraMsgWrapper>>>>()?;
+        .collect::<StdResult<Vec<CosmosMsg<TerraMsg>>>>()?;
 
     // Execute minimum amount assertion
     if let Some(minimum_receive) = minimum_receive {
@@ -250,7 +250,7 @@ pub fn execute_swap_operations(
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: env.contract.address.to_string(),
             funds: vec![],
-            msg: to_binary(&ExecuteMsg::AssertMinimumReceive {
+            msg: to_json_binary(&ExecuteMsg::AssertMinimumReceive {
                 asset_info: target_asset_info,
                 prev_balance: receiver_balance,
                 minimum_receive,
@@ -282,7 +282,7 @@ fn assert_minimum_receive(
     prev_balance: Uint128,
     minimum_receive: Uint128,
     receiver: Addr,
-) -> Result<Response<TerraMsgWrapper>, ContractError> {
+) -> Result<Response<TerraMsg>, ContractError> {
     asset_info.check(deps.api)?;
     let receiver_balance = asset_info.query_pool(&deps.querier, receiver)?;
     let swap_amount = receiver_balance.checked_sub(prev_balance)?;
@@ -316,11 +316,11 @@ fn assert_minimum_receive(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::Config {} => Ok(to_binary(&query_config(deps)?)?),
+        QueryMsg::Config {} => Ok(to_json_binary(&query_config(deps)?)?),
         QueryMsg::SimulateSwapOperations {
             offer_amount,
             operations,
-        } => Ok(to_binary(&simulate_swap_operations(
+        } => Ok(to_json_binary(&simulate_swap_operations(
             deps,
             offer_amount,
             operations,
@@ -371,7 +371,7 @@ fn simulate_swap_operations(
 ) -> Result<SimulateSwapOperationsResponse, ContractError> {
     let config: Config = CONFIG.load(deps.storage)?;
     let astroport_factory = config.astroport_factory;
-    let terra_querier = TerraQuerier::new(&deps.querier);
+    let terra_querier = TerraStargateQuerier::new(&deps.querier);
 
     let operations_len = operations.len();
     if operations_len == 0 {
@@ -440,7 +440,7 @@ fn simulate_swap_operations(
                 let mut res: SimulationResponse =
                     deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
                         contract_addr: pair_info.contract_addr.to_string(),
-                        msg: to_binary(&PairQueryMsg::Simulation {
+                        msg: to_json_binary(&PairQueryMsg::Simulation {
                             offer_asset: Asset {
                                 info: offer_asset_info.clone(),
                                 amount: offer_amount,
@@ -512,8 +512,8 @@ fn assert_operations(api: &dyn Api, operations: &[SwapOperation]) -> Result<(), 
 
 #[test]
 fn test_invalid_operations() {
-    use cosmwasm_std::testing::mock_dependencies;
-    let deps = mock_dependencies(&[]);
+    use cosmwasm_std::testing::mock_dependencies_with_balances;
+    let deps = mock_dependencies_with_balances(&[]);
     // empty error
     assert_eq!(true, assert_operations(deps.as_ref().api, &vec![]).is_err());
 

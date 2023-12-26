@@ -26,4 +26,4 @@ uint = "0.9"
 cw-storage-plus = "0.15"
 
 [dev-dependencies]
-cosmwasm-schema = "1.1"
+cosmwasm-schema = "1.5"

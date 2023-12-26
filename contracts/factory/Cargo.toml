@@ -35,7 +35,7 @@ itertools = "0.10"
 classic-bindings = { version = "0.2.1", features = ["stargate"] }
 
 [dev-dependencies]
-cosmwasm-schema = "1.1"
+cosmwasm-schema = "1.5"
 astroport-token = {path = "../token"}
 astroport-pair = {path = "../pair"}
 cw20 = "0.15"

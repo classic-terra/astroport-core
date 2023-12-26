@@ -135,6 +135,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "astroport-router"
+version = "2.0.0"
+dependencies = [
+ "astroport",
+ "classic-bindings",
+ "classic-rust 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw2",
+ "cw20",
+ "integer-sqrt",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "astroport-staking"
+version = "2.0.0"
+dependencies = [
+ "astroport",
+ "astroport-token",
+ "classic-test-tube 0.2.2",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw2",
+ "cw20",
+ "protobuf",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "astroport-token"
 version = "2.0.0"
 dependencies = [

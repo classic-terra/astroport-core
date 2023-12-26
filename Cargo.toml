@@ -5,6 +5,8 @@ members = [
     "contracts/factory",
     "contracts/pair",
     "contracts/pair_stable",
+    "contracts/router",
+    "contracts/tokenomics/staking",
 ]
 
 [profile.release]

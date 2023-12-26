@@ -14,41 +14,34 @@ use cosmwasm_std::{
 };
 use cw20::{BalanceResponse, Cw20QueryMsg, MinterResponse};
 use std::str::FromStr;
-use terra_multi_test::{
-    next_block, AppBuilder, BankKeeper, ContractWrapper, Executor, TerraApp, TerraMock,
-};
+use classic_test_tube::{self, TerraTestApp, Wasm, SigningAccount, Module, Account};
 
-fn mock_app() -> TerraApp {
-    let mut env = mock_env();
-    env.block.time = Timestamp::from_seconds(EPOCH_START);
-    let api = MockApi::default();
-    let bank = BankKeeper::new();
-    let storage = MockStorage::new();
-    let custom = TerraMock::luna_ust_case();
+fn store_token_code(wasm: &Wasm<TerraTestApp>, owner: &SigningAccount) -> u64 {
+    let astro_token_contract = std::fs::read("../../../artifacts/astroport_token.wasm").unwrap();
+    let contract = wasm.store_code(&astro_token_contract, None, owner).unwrap();
+    contract.data.code_id
+}
 
-    AppBuilder::new()
-        .with_api(api)
-        .with_block(env.block)
-        .with_bank(bank)
-        .with_storage(storage)
-        .with_custom(custom)
-        .build()
+fn store_pair_code(wasm: &Wasm<TerraTestApp>, owner: &SigningAccount) -> u64 {
+    let pair_contract = std::fs::read("../../../artifacts/astroport_pair.wasm").unwrap();
+    let contract = wasm.store_code(&pair_contract, None, owner).unwrap();
+    contract.data.code_id
+}
+
+fn store_factory_code(wasm: &Wasm<TerraTestApp>, owner: &SigningAccount) -> u64 {
+    let factory_contract = std::fs::read("../../../artifacts/astroport_factory.wasm").unwrap();
+    let contract = wasm.store_code(&factory_contract, None, owner).unwrap();
+    contract.data.code_id
 }
 
 fn instantiate_contracts(
-    router: &mut TerraApp,
-    owner: Addr,
+    wasm: &Wasm<TerraTestApp>,
+    owner: &SigningAccount,
     staking: Addr,
     governance_percent: Uint64,
     max_spread: Option<Decimal>,
 ) -> (Addr, Addr, Addr, Addr) {
-    let astro_token_contract = Box::new(ContractWrapper::new_with_empty(
-        astroport_token::contract::execute,
-        astroport_token::contract::instantiate,
-        astroport_token::contract::query,
-    ));
-
-    let astro_token_code_id = router.store_code(astro_token_contract);
+    let astro_token_code_id = store_token_code(wasm, owner);
 
     let msg = TokenInstantiateMsg {
         name: String::from("Astro token"),
@@ -56,44 +49,28 @@ fn instantiate_contracts(
         decimals: 6,
         initial_balances: vec![],
         mint: Some(MinterResponse {
-            minter: owner.to_string(),
+            minter: owner.address(),
             cap: None,
         }),
         marketing: None,
     };
 
-    let astro_token_instance = router
-        .instantiate_contract(
+    let astro_token_instance = wasm
+        .instantiate(
             astro_token_code_id,
-            owner.clone(),
             &msg,
+            Some(&owner.address()),
+            Some("ASTRO"),
             &[],
-            String::from("ASTRO"),
-            None,
+            owner,
         )
-        .unwrap();
+        .unwrap()
+        .data
+        .address;
 
-    let pair_contract = Box::new(
-        ContractWrapper::new_with_empty(
-            astroport_pair::contract::execute,
-            astroport_pair::contract::instantiate,
-            astroport_pair::contract::query,
-        )
-        .with_reply_empty(astroport_pair::contract::reply),
-    );
+    let pair_code_id = store_pair_code(&wasm, owner);
 
-    let pair_code_id = router.store_code(pair_contract);
-
-    let factory_contract = Box::new(
-        ContractWrapper::new_with_empty(
-            astroport_factory::contract::execute,
-            astroport_factory::contract::instantiate,
-            astroport_factory::contract::query,
-        )
-        .with_reply_empty(astroport_factory::contract::reply),
-    );
-
-    let factory_code_id = router.store_code(factory_contract);
+    let factory_code_id = store_factory_code(&wasm, owner);
     let msg = astroport::factory::InstantiateMsg {
         pair_configs: vec![PairConfig {
             code_id: pair_code_id,
@@ -104,22 +81,21 @@ fn instantiate_contracts(
         }],
         token_code_id: 1u64,
         fee_address: None,
-        owner: owner.to_string(),
-        generator_address: Some(String::from("generator")),
+        owner: owner.address(),
+        generator_address: Some(String::from("terra1rmwsanjl4tple6k3fjtqgmaepfefdwzvr6hyff")),
         whitelist_code_id: 234u64,
     };
 
-    let factory_instance = router
-        .instantiate_contract(
-            factory_code_id,
-            owner.clone(),
-            &msg,
-            &[],
-            String::from("FACTORY"),
-            None,
-        )
-        .unwrap();
-
+    let factory_instance = wasm
+        .instantiate(
+            factory_code_id, 
+            &msg, 
+            Some(&owner.address()), 
+            Some("FACTORY"), 
+            &[], 
+            owner
+        ).unwrap();
+        
     let escrow_fee_distributor_contract = Box::new(ContractWrapper::new_with_empty(
         astroport_escrow_fee_distributor::contract::execute,
         astroport_escrow_fee_distributor::contract::instantiate,
@@ -159,8 +135,8 @@ fn instantiate_contracts(
         owner: String::from("owner"),
         factory_contract: factory_instance.to_string(),
         staking_contract: staking.to_string(),
-        governance_contract: Option::from(governance_instance.to_string()),
-        governance_percent: Option::from(governance_percent),
+        // governance_contract: Option::from(governance_instance.to_string()),
+        // governance_percent: Option::from(governance_percent),
         astro_token_contract: astro_token_instance.to_string(),
         max_spread,
     };

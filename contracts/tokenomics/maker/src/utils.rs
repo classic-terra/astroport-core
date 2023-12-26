@@ -4,7 +4,7 @@ use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::maker::ExecuteMsg;
 use astroport::pair::Cw20HookMsg;
 use astroport::querier::query_pair_info;
-use cosmwasm_std::{to_binary, Coin, Deps, Env, StdResult, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{to_json_binary, Coin, Deps, Env, StdResult, SubMsg, Uint128, WasmMsg};
 
 /// The default bridge depth for a fee token
 pub const BRIDGES_INITIAL_DEPTH: u64 = 0;
@@ -45,7 +45,7 @@ pub fn build_swap_msg(
 
         Ok(SubMsg::new(WasmMsg::Execute {
             contract_addr: pool.contract_addr.to_string(),
-            msg: to_binary(&astroport::pair::ExecuteMsg::Swap {
+            msg: to_json_binary(&astroport::pair::ExecuteMsg::Swap {
                 offer_asset,
                 belief_price: None,
                 max_spread: Some(cfg.max_spread),
@@ -59,10 +59,10 @@ pub fn build_swap_msg(
     } else {
         Ok(SubMsg::new(WasmMsg::Execute {
             contract_addr: from.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+            msg: to_json_binary(&cw20::Cw20ExecuteMsg::Send {
                 contract: pool.contract_addr.to_string(),
                 amount: amount_in,
-                msg: to_binary(&Cw20HookMsg::Swap {
+                msg: to_json_binary(&Cw20HookMsg::Swap {
                     belief_price: None,
                     max_spread: Some(cfg.max_spread),
                     to: None,
@@ -82,7 +82,7 @@ pub fn build_distribute_msg(
         // Swap bridge assets
         SubMsg::new(WasmMsg::Execute {
             contract_addr: env.contract.address.to_string(),
-            msg: to_binary(&ExecuteMsg::SwapBridgeAssets {
+            msg: to_json_binary(&ExecuteMsg::SwapBridgeAssets {
                 assets: bridge_assets,
                 depth,
             })?,
@@ -92,7 +92,7 @@ pub fn build_distribute_msg(
         // Update balances and distribute rewards
         SubMsg::new(WasmMsg::Execute {
             contract_addr: env.contract.address.to_string(),
-            msg: to_binary(&ExecuteMsg::DistributeAstro {})?,
+            msg: to_json_binary(&ExecuteMsg::DistributeAstro {})?,
             funds: vec![],
         })
     };

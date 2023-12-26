@@ -32,7 +32,8 @@ async function main() {
     await uploadAndInitStaking(terra, wallet)
     await uploadAndInitFactory(terra, wallet)
     await uploadAndInitRouter(terra, wallet)
-    await uploadAndInitMaker(terra, wallet)
+    // maker contract is for fees distribution only
+    // await uploadAndInitMaker(terra, wallet)
 
     // Set new owner for admin
     network = readArtifact(terra.config.chainID) // reload variables

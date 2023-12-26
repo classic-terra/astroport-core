@@ -19,7 +19,7 @@ use astroport::maker::{
 };
 use astroport::pair::QueryMsg as PairQueryMsg;
 use cosmwasm_std::{
-    attr, entry_point, to_binary, Addr, Attribute, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    attr, entry_point, to_json_binary, Addr, Attribute, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Order, QueryRequest, Response, StdError, StdResult, SubMsg, Uint128, Uint64,
     WasmMsg, WasmQuery,
 };
@@ -627,7 +627,7 @@ fn distribute(
         if amount.u128() > 0 {
             let send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: cfg.astro_token_contract.to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::Send {
+                msg: to_json_binary(&Cw20ExecuteMsg::Send {
                     contract: governance_contract.to_string(),
                     msg: Binary::default(),
                     amount,
@@ -829,9 +829,9 @@ fn update_bridges(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_get_config(deps)?),
-        QueryMsg::Balances { assets } => to_binary(&query_get_balances(deps, env, assets)?),
-        QueryMsg::Bridges {} => to_binary(&query_bridges(deps, env)?),
+        QueryMsg::Config {} => to_json_binary(&query_get_config(deps)?),
+        QueryMsg::Balances { assets } => to_json_binary(&query_get_balances(deps, env, assets)?),
+        QueryMsg::Bridges {} => to_json_binary(&query_bridges(deps, env)?),
     }
 }
 
@@ -888,7 +888,7 @@ fn query_get_balances(deps: Deps, env: Env, assets: Vec<AssetInfo>) -> StdResult
 fn query_bridges(deps: Deps, _env: Env) -> StdResult<Vec<(String, String)>> {
     BRIDGES
         .range(deps.storage, None, None, Order::Ascending)
-        .map(|bridge| bridge.map(|bridge| Ok((String::from_utf8(bridge.0)?, bridge.1.to_string()))))
+        .map(|bridge| bridge.map(|bridge| Ok((bridge.0, bridge.1.to_string()))))
         .collect::<StdResult<StdResult<Vec<_>>>>()?
 }
 
@@ -901,7 +901,7 @@ fn query_bridges(deps: Deps, _env: Env) -> StdResult<Vec<(String, String)>> {
 pub fn query_pair(deps: Deps, contract_addr: Addr) -> StdResult<[AssetInfo; 2]> {
     let res: PairInfo = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: String::from(contract_addr),
-        msg: to_binary(&PairQueryMsg::Pair {})?,
+        msg: to_json_binary(&PairQueryMsg::Pair {})?,
     }))?;
 
     Ok(res.asset_infos)
