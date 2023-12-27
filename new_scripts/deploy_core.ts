@@ -77,6 +77,7 @@ async function uploadAndInitStaking(terra: LCDClient, wallet: any) {
             network.multisigAddress,
             join(ARTIFACTS_PATH, 'astroport_staking.wasm'),
             {
+                owner: wallet.key.accAddress,
                 token_code_id: network.tokenCodeID,
                 deposit_token_addr:  network.tokenAddress,
             },
@@ -122,6 +123,7 @@ async function uploadAndInitFactory(terra: LCDClient, wallet: any) {
                 token_code_id: network.tokenCodeID,
                 generator_address: undefined,
                 fee_address: undefined,
+                whitelist_code_id: 3000 //purely random number of whitelist_code_id
             },
             "Astroport factory"
         )
